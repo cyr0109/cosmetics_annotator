@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>心得標注工具</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+:root{--bg:#f6f7f9;--line:#e3e5e8;--text:#1f2328;--muted:#6b7280;--accent:#2563eb}
+*{box-sizing:border-box}
+body{margin:0;font:14px/1.6 -apple-system,"PingFang TC","Noto Sans TC",sans-serif;color:var(--text);background:var(--bg);height:100vh;display:flex;flex-direction:column}
+header{display:flex;gap:10px;align-items:center;padding:8px 16px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap}
+header h1{font-size:16px;margin:0 8px 0 0}
+.progress{display:flex;align-items:center;gap:8px;color:var(--muted)}
+.bar{width:160px;height:6px;background:var(--line);border-radius:3px;overflow:hidden}
+.bar>i{display:block;height:100%;width:0;background:var(--accent)}
+.spacer{flex:1}
+#msg{color:#b91c1c;min-height:1em}
+button,label.btn{font:inherit;padding:4px 10px;border:1px solid var(--line);background:#fff;border-radius:6px;cursor:pointer;color:inherit}
+button:hover,label.btn:hover{background:#f0f2f5}
+button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+button.on{outline:2px solid var(--accent)}
+input[type=text]{font:inherit;padding:4px 8px;border:1px solid var(--line);border-radius:6px}
+main{flex:1;display:grid;grid-template-columns:260px 1fr 300px;min-height:0}
+main>*{overflow:auto;min-height:0}
+#docList{background:#fff;border-right:1px solid var(--line)}
+.doc{padding:8px 12px;border-bottom:1px solid var(--line);cursor:pointer;display:flex;gap:8px}
+.doc.active{background:#eef4ff}
+.doc small{color:var(--muted)}
+.dot{width:8px;height:8px;border-radius:50%;margin-top:8px;flex:none}
+.todo{background:#d1d5db}.done{background:#16a34a}.skip{background:#f59e0b}.empty{background:#8b5cf6}
+.snip{overflow:hidden;white-space:nowrap;text-overflow:ellipsis;color:var(--muted)}
+#center{padding:24px 32px}
+#hint{color:var(--muted);min-height:1.6em;margin-bottom:6px}
+#text{background:#fff;border:1px solid var(--line);border-radius:8px;padding:20px 24px;font-size:17px;line-height:2.3;white-space:pre-wrap}
+mark{border-radius:3px;padding:3px 0;cursor:pointer;color:inherit}
+.actions{display:flex;gap:8px;margin:16px 0;flex-wrap:wrap}
+h3{font-size:13px;color:var(--muted);margin:20px 0 8px;font-weight:600}
+.span-row{display:flex;gap:8px;align-items:center;padding:4px 0;border-bottom:1px dashed var(--line)}
+.span-row .t{flex:1}
+.tag{font-size:12px;padding:0 6px;border-radius:4px}
+#side{background:#fff;border-left:1px solid var(--line);padding:4px 16px 16px}
+.label{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;border:1px solid transparent}
+.label:hover{border-color:var(--line)}
+.label .n{flex:1}
+.key{font:12px ui-monospace,monospace;border:1px solid var(--line);border-radius:4px;padding:0 5px;color:var(--muted)}
+.swatch{width:14px;height:14px;border-radius:3px;flex:none}
+dl{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;margin:0}
+dt{color:var(--muted)}dd{margin:0;word-break:break-all}
+#empty{color:var(--muted);text-align:center;margin-top:20vh}
+#pop{position:absolute;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.12);padding:8px;display:none;z-index:10;min-width:180px}
+#pop label{display:flex;gap:6px;align-items:center;padding:2px 4px;cursor:pointer}
+dialog{border:1px solid var(--line);border-radius:10px;padding:20px}
+#login{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:100}
+#login[hidden]{display:none}
+#login{background:linear-gradient(135deg,#eef4ff,#f6f7f9 60%)}
+#login form{background:#fff;border:1px solid var(--line);border-radius:14px;padding:36px 40px;display:flex;flex-direction:column;gap:16px;width:360px;box-shadow:0 12px 40px rgba(30,41,59,.08)}
+#login h2{margin:0;font-size:22px}
+#login p{margin:-10px 0 4px;color:var(--muted)}
+#login label{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--muted)}
+#login input{font:inherit;font-size:15px;color:var(--text);padding:10px 12px;border:1px solid var(--line);border-radius:8px;outline:none}
+#login input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(37,99,235,.15)}
+#login button{padding:10px;font-size:15px;border-radius:8px}
+#loginErr{color:#b91c1c;min-height:1.2em;font-size:13px;margin:-8px 0}
+dialog table input{width:100%}
+dialog td{padding:3px}
+</style>
+</head>
+<body>
+<header>
+  <h1>心得標注</h1>
+  標注者 <input type="text" id="user" placeholder="輸入你的名字" size="10">
+  <div class="progress"><span id="prog">0/0</span><div class="bar"><i id="bar"></i></div></div>
+  <span id="msg"></span>
+  <span class="spacer"></span>
+  <label class="btn">上傳 xlsx / csv<input type="file" id="file" accept=".xlsx,.xls,.csv" hidden></label>
+  <button id="sample">載入範例</button>
+  <button id="settings">標籤設定</button>
+  <button id="expCsv">匯出 CSV</button>
+  <button id="expJson">匯出 JSON</button>
+  <button id="logout">登出</button>
+</header>
+<div id="login" hidden>
+  <form id="loginForm">
+    <h2>心得標注工具</h2>
+    <p>請登入以開始標注</p>
+    <label>帳號 <input type="text" id="loginId" autocomplete="username" required></label>
+    <label>密碼 <input type="password" id="loginPw" autocomplete="current-password" required></label>
+    <span id="loginErr"></span>
+    <button class="primary">登入</button>
+  </form>
+</div>
+<main>
+  <aside id="docList"></aside>
+  <section id="center">
+    <div id="empty">還沒有資料。請上傳 xlsx / csv（要有「編號」和「心得內容」欄位），或按「載入範例」。</div>
+    <div id="work" hidden>
+      <div id="hint"></div>
+      <div id="text"></div>
+      <div class="actions">
+        <button id="prev">← 上一筆</button>
+        <button data-status="done" class="primary">完成</button>
+        <button data-status="skip">跳過</button>
+        <button data-status="empty">無可標內容</button>
+        <button id="next">下一筆 →</button>
+        <button id="undo" title="Ctrl/⌘ + Z">復原</button>
+      </div>
+      <h3>這篇已標的段落</h3>
+      <div id="spans"></div>
+    </div>
+  </section>
+  <aside id="side">
+    <h3>標籤（圈選文字後按數字鍵）</h3>
+    <div id="labels"></div>
+    <h3>心得資料</h3>
+    <dl id="meta"></dl>
+  </aside>
+</main>
+<div id="pop"></div>
+
+<dialog id="userDlg">
+  <form method="dialog">
+    <p>請先輸入標注者名字：</p>
+    <input type="text" id="userInput" required autofocus>
+    <button class="primary">開始</button>
+  </form>
+</dialog>
+
+<dialog id="setDlg">
+  <form method="dialog">
+    <h3 style="margin-top:0">標籤設定</h3>
+    <table><thead><tr><th>顏色</th><th>名稱</th><th>定義</th><th>例句</th></tr></thead><tbody id="setRows"></tbody></table>
+    <p style="text-align:right"><button type="button" id="addLabel" style="float:left">＋ 新增標籤</button> <button value="cancel">取消</button> <button value="ok" class="primary">儲存</button></p>
+  </form>
+</dialog>
+
+<script>
+const STATUS = {todo:'未標', done:'已完成', skip:'跳過', empty:'無可標內容'};
+const COLORS = ['#fca5a5','#fdba74','#fde047','#86efac','#67e8f9','#a5b4fc','#f0abfc'];
+const defaultLabels = () => COLORS.map((color, i) => ({name:`label ${i+1}`, color, desc:'', example:''}));
+
+// The only place that touches persistence. shortcut: localStorage (~5MB, one browser), swap these methods for DB calls when deploying.
+const Store = {
+  get(k, d){ try { return JSON.parse(localStorage.getItem('annot:'+k)) ?? d } catch { return d } },
+  set(k, v){
+    try { localStorage.setItem('annot:'+k, JSON.stringify(v)) }
+    catch (e) { flash('儲存失敗（瀏覽器空間可能滿了），請先匯出備份！'); throw e }
+  },
+  loadDocs(){ return this.get('docs', []) },          saveDocs(v){ this.set('docs', v) },
+  loadLabels(){ return this.get('labels', defaultLabels()) }, saveLabels(v){ this.set('labels', v) },
+  loadAnn(user){ return this.get('ann:'+user, {}) },   saveAnn(user, v){ this.set('ann:'+user, v) },
+  loadUser(){ return this.get('user', '') },           saveUser(v){ this.set('user', v) },
+};
+
+// ---- pure annotation logic (spans are {start, end, text, labels:[labelIndex]}) ----
+const overlaps = (spans, s, e) => spans.some(x => s < x.end && x.start < e);
+function applyLabel(spans, s, e, text, l){
+  const same = spans.find(x => x.start === s && x.end === e);
+  if (same) return spans.map(x => x !== same || x.labels.includes(l) ? x : {...x, labels:[...x.labels, l]});
+  if (overlaps(spans, s, e)) return null;
+  return [...spans, {start:s, end:e, text, labels:[l]}].sort((a, b) => a.start - b.start);
+}
+function toggleLabel(spans, i, l){
+  const sp = spans[i], labels = sp.labels.includes(l) ? sp.labels.filter(x => x !== l) : [...sp.labels, l].sort();
+  return labels.length ? spans.map((x, j) => j === i ? {...x, labels} : x) : spans.filter((_, j) => j !== i);
+}
+function toCSV(docs, ann, user, labels){
+  const q = v => `"${String(v).replaceAll('"', '""')}"`;
+  const rows = [['心得編號','標注者','狀態','開始位置','結束位置','文字','標籤編號','標籤名稱']];
+  for (const d of docs) {
+    const a = ann[d.id] ?? {status:'todo', spans:[]};
+    // docs judged without spans (e.g. 無可標內容) still get one row so the decision is recorded
+    if (!a.spans.length && a.status !== 'todo') rows.push([d.id, user, STATUS[a.status], '', '', '', '', '']);
+    for (const sp of a.spans)
+      rows.push([d.id, user, STATUS[a.status], sp.start, sp.end, sp.text, sp.labels.map(l => l+1).join('|'), sp.labels.map(l => labels[l].name).join('|')]);
+  }
+  return rows.map(r => r.map(q).join(',')).join('\r\n');
+}
+
+// self-check
+(() => {
+  let s = applyLabel([], 2, 5, 'abc', 0);
+  console.assert(s.length === 1 && s[0].labels[0] === 0, 'apply');
+  console.assert(applyLabel(s, 4, 6, 'x', 1) === null, 'overlap rejected');
+  s = applyLabel(s, 2, 5, 'abc', 3);
+  console.assert(s[0].labels.join() === '0,3', 'same range adds label');
+  console.assert(toggleLabel(toggleLabel(s, 0, 0), 0, 3).length === 0, 'removing last label drops span');
+  console.assert(toCSV([{id:'1'}], {1:{spans:[{start:0,end:1,text:'a"b',labels:[0]}]}}, 'u', defaultLabels()).includes('"a""b"'), 'csv escape');
+  console.assert(toCSV([{id:'9'}], {9:{status:'empty',spans:[]}}, 'u', defaultLabels()).includes('"9","u","無可標內容"'), 'empty doc exported');
+})();
+
+// ---- state ----
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let docs = Store.loadDocs(), labels = Store.loadLabels(), user = Store.loadUser();
+let ann = user ? Store.loadAnn(user) : {};
+let cur = 0, pending = null, history = [];
+const docAnn = id => ann[id] ?? {status:'todo', spans:[]};
+
+function flash(t){ $('#msg').textContent = t; clearTimeout(flash.t); flash.t = setTimeout(() => $('#msg').textContent = '', 3000) }
+function mutate(id, fn){
+  history.push(JSON.stringify(ann)); if (history.length > 100) history.shift();
+  ann = {...ann, [id]: fn(docAnn(id))};
+  Store.saveAnn(user, ann); render();
+}
+function undo(){ if (!history.length) return; ann = JSON.parse(history.pop()); Store.saveAnn(user, ann); render() }
+function go(i){ cur = Math.max(0, Math.min(docs.length - 1, i)); pending = null; hidePop(); render() }
+function setUser(name){
+  user = name.trim(); Store.saveUser(user); ann = user ? Store.loadAnn(user) : {}; history = []; render();
+}
+function askUser(){ $('#userDlg').showModal() }
+
+const bg = ls => ls.length === 1 ? labels[ls[0]].color
+  : `linear-gradient(180deg,${ls.map((l, i) => `${labels[l].color} ${i/ls.length*100}% ${(i+1)/ls.length*100}%`).join(',')})`;
+
+function render(){
+  $('#user').value = user;
+  const finished = docs.filter(d => docAnn(d.id).status !== 'todo').length;
+  $('#prog').textContent = `${finished}/${docs.length}`;
+  $('#bar').style.width = docs.length ? finished / docs.length * 100 + '%' : 0;
+
+  $('#docList').innerHTML = docs.map((d, i) => { const st = docAnn(d.id).status; return `
+    <div class="doc${i === cur ? ' active' : ''}" data-i="${i}"><span class="dot ${st}"></span>
+    <div style="min-width:0"><b>#${esc(d.id)}</b> <small>${STATUS[st]}</small><div class="snip">${esc(d.text)}</div></div></div>` }).join('');
+  $('#docList .active')?.scrollIntoView({block:'nearest'});
+
+  $('#labels').innerHTML = labels.map((l, i) => `
+    <div class="label" data-l="${i}" title="${esc(l.desc ? '定義：' + l.desc : '（尚無定義）')}${l.example ? '\n例句：' + esc(l.example) : ''}">
+    <span class="swatch" style="background:${l.color}"></span><span class="n">${esc(l.name)}</span>${i < 9 ? `<span class="key">${i+1}</span>` : ''}</div>`).join('');
+
+  $('#empty').hidden = !!docs.length; $('#work').hidden = !docs.length;
+  if (!docs.length) { $('#meta').innerHTML = ''; return }
+  const d = docs[cur], a = docAnn(d.id);
+
+  const text = $('#text'); text.textContent = ''; let pos = 0;
+  a.spans.forEach((sp, i) => {
+    text.append(d.text.slice(pos, sp.start));
+    const m = document.createElement('mark');
+    m.textContent = d.text.slice(sp.start, sp.end); m.dataset.i = i;
+    m.style.background = bg(sp.labels); m.title = sp.labels.map(l => labels[l].name).join('、');
+    text.append(m); pos = sp.end;
+  });
+  text.append(d.text.slice(pos));
+
+  $('#hint').textContent = pending ? `已選取「${d.text.slice(pending.s, pending.e)}」→ 按 1–${labels.length} 或點右邊標籤` : '用滑鼠圈選一段文字來標注；點已標的段落可修改';
+  $('#spans').innerHTML = a.spans.map((sp, i) => `<div class="span-row"><span class="t">「${esc(sp.text)}」</span>
+    ${sp.labels.map(l => `<span class="tag" style="background:${labels[l].color}">${esc(labels[l].name)}</span>`).join('')}
+    <button data-del="${i}" title="刪除">×</button></div>`).join('') || '<span style="color:var(--muted)">還沒有</span>';
+  document.querySelectorAll('[data-status]').forEach(b => b.classList.toggle('on', b.dataset.status === a.status));
+  $('#meta').innerHTML = Object.entries(d.meta).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('');
+}
+
+// ---- selecting & labeling ----
+function selOffsets(){
+  const sel = getSelection(), root = $('#text');
+  if (!sel.rangeCount || sel.isCollapsed) return null;
+  const r = sel.getRangeAt(0);
+  if (!root.contains(r.startContainer) || !root.contains(r.endContainer)) return null;
+  const pre = document.createRange(); pre.setStart(root, 0); pre.setEnd(r.startContainer, r.startOffset);
+  const s = pre.toString().length;
+  return {s, e: s + r.toString().length};
+}
+function label(l){
+  if (!user) return askUser();
+  if (!pending) return flash('先用滑鼠圈選一段文字');
+  const d = docs[cur], next = applyLabel(docAnn(d.id).spans, pending.s, pending.e, d.text.slice(pending.s, pending.e), l);
+  if (!next) return flash('不能跟已標的段落重疊');
+  pending = null; getSelection().removeAllRanges();
+  mutate(d.id, a => ({...a, spans: next}));
+}
+
+function showPop(i, el){
+  const sp = docAnn(docs[cur].id).spans[i], p = $('#pop'), r = el.getBoundingClientRect();
+  p.innerHTML = labels.map((l, j) => `<label><input type="checkbox" data-pl="${j}" ${sp.labels.includes(j) ? 'checked' : ''}>
+    <span class="swatch" style="background:${l.color}"></span>${esc(l.name)}</label>`).join('') +
+    `<button data-del="${i}" style="margin-top:6px;width:100%">刪除這段</button>`;
+  p.dataset.i = i;
+  p.style.left = r.left + scrollX + 'px'; p.style.top = r.bottom + scrollY + 6 + 'px'; p.style.display = 'block';
+}
+function hidePop(){ $('#pop').style.display = 'none' }
+
+$('#text').addEventListener('mouseup', e => {
+  const o = selOffsets();
+  if (o) { pending = o; hidePop(); $('#hint').textContent = `已選取「${docs[cur].text.slice(o.s, o.e)}」→ 按 1–${labels.length} 或點右邊標籤`; return }
+  pending = null;
+  if (e.target.tagName === 'MARK') showPop(+e.target.dataset.i, e.target);
+});
+$('#pop').addEventListener('change', e => {
+  const i = +$('#pop').dataset.i; hidePop();
+  mutate(docs[cur].id, a => ({...a, spans: toggleLabel(a.spans, i, +e.target.dataset.pl)}));
+});
+document.addEventListener('click', e => {
+  if (e.target.dataset.del != null) { hidePop(); const i = +e.target.dataset.del; return mutate(docs[cur].id, a => ({...a, spans: a.spans.filter((_, j) => j !== i)})) }
+  if (!e.target.closest('#pop, mark')) hidePop();
+  const doc = e.target.closest('.doc'); if (doc) return go(+doc.dataset.i);
+  const lb = e.target.closest('.label'); if (lb) return label(+lb.dataset.l);
+  const st = e.target.dataset.status;
+  if (st) {
+    if (!user) return askUser();
+    const off = docAnn(docs[cur].id).status === st; // clicking the active status again resets it to todo
+    mutate(docs[cur].id, a => ({...a, status: off ? 'todo' : st}));
+    if (!off) go(cur + 1);
+  }
+});
+document.addEventListener('keydown', e => {
+  if (e.target.matches?.('input, textarea') || $('dialog[open]')) return;
+  if ((e.metaKey || e.ctrlKey) && e.key === 'z') { e.preventDefault(); return undo() }
+  if (e.key === 'Escape') { pending = null; hidePop(); getSelection().removeAllRanges(); return render() }
+  const n = +e.key; if (n >= 1 && n <= labels.length) label(n - 1);
+});
+$('#prev').onclick = () => go(cur - 1);
+$('#next').onclick = () => go(cur + 1);
+$('#undo').onclick = undo;
+$('#user').onchange = e => setUser(e.target.value);
+$('#userDlg').addEventListener('close', () => setUser($('#userInput').value));
+
+// ---- data in ----
+function loadRows(rows){
+  if (!rows.length || !('編號' in rows[0]) || !('心得內容' in rows[0])) return flash('找不到「編號」或「心得內容」欄位');
+  const seen = new Set();
+  docs = rows.filter(r => String(r['心得內容']).trim()).map(r => {
+    const {['心得內容']: text, ...meta} = r, id = String(r['編號']);
+    if (seen.has(id)) flash(`編號 ${id} 重複了，請檢查資料`); seen.add(id);
+    return {id, text: String(text), meta};
+  });
+  Store.saveDocs(docs); go(0); flash(`載入 ${docs.length} 筆心得`);
+}
+$('#file').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return; e.target.value = '';
+  try {
+    const wb = XLSX.read(await f.arrayBuffer());
+    const ws = wb.Sheets['心得資料相關欄位'] ?? wb.Sheets[wb.SheetNames[0]];
+    loadRows(XLSX.utils.sheet_to_json(ws, {raw:false, defval:''}));
+  } catch (err) { flash('讀檔失敗：' + err.message) }
+};
+$('#sample').onclick = () => loadRows([
+  {'編號':'1','心得發布者年齡':'35','心得發布者膚質':'混合性肌膚','心得發布者性別':'女','心得發布者所在地區':'新北市','通路定義':'開架','品牌名稱':'TIRTIR','產品名稱':'MY GLOW CREAM 水光保濕氣墊粉餅','產品屬性':'底妝/粉底/氣墊粉餅','心得發布日期':'2026-10-01','心得評分':'5','體驗方式':'正品容量 海外',
+   '心得內容':'去日本買的 有一陣子好像頗「紅」 捧油一直強力推薦? 這款氣墊粉餅很輕巧 非常好隨身攜帶 妝感很服貼清透 不卡紋、不太脫妝 但遮瑕力中等 持妝度也中等 外出流個汗 「它就跟別人跑了」?'},
+  {'編號':'2','心得發布者膚質':'乾性肌膚','品牌名稱':'（範例）','產品名稱':'範例保濕精華','心得評分':'4','心得內容':'質地很清爽，擦完不黏膩。保濕度對我的乾肌來說有點不夠，冬天要再疊乳霜。價格偏高，但包裝很有質感。'},
+  {'編號':'3','心得發布者膚質':'油性肌膚','品牌名稱':'（範例）','產品名稱':'範例防曬乳','心得評分':'3','心得內容':'味道有點重，上臉會泛白。不過防曬係數夠高，出門一整天也沒曬傷。'},
+  {'編號':'4','品牌名稱':'（範例）','產品名稱':'範例唇膏','心得評分':'5','心得內容':'讚'},
+]);
+
+// ---- label settings ----
+const labelRow = (l, i) => `<tr><td><input type="color" value="${l.color}" data-f="color" data-i="${i}"></td>
+    <td><input type="text" value="${esc(l.name)}" data-f="name" data-i="${i}"></td>
+    <td><input type="text" value="${esc(l.desc)}" data-f="desc" data-i="${i}"></td>
+    <td><input type="text" value="${esc(l.example)}" data-f="example" data-i="${i}"></td></tr>`;
+$('#settings').onclick = () => {
+  $('#setRows').innerHTML = labels.map(labelRow).join('');
+  $('#setDlg').showModal();
+};
+$('#addLabel').onclick = () => {
+  const i = $('#setRows').rows.length;
+  $('#setRows').insertAdjacentHTML('beforeend', labelRow({name:`label ${i+1}`, color: COLORS[i % COLORS.length], desc:'', example:''}, i));
+};
+$('#setDlg').addEventListener('close', () => {
+  if ($('#setDlg').returnValue !== 'ok') return;
+  labels = labels.map(l => ({...l}));
+  document.querySelectorAll('#setRows input').forEach(inp => (labels[inp.dataset.i] ??= {})[inp.dataset.f] = inp.value);
+  Store.saveLabels(labels); render();
+});
+
+// ---- export ----
+function download(name, content, type){
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([content], {type})); a.download = name; a.click();
+}
+const stamp = () => new Date().toISOString().slice(0, 10);
+$('#expCsv').onclick = () => download(`標注_${user}_${stamp()}.csv`, '﻿' + toCSV(docs, ann, user, labels), 'text/csv');
+$('#expJson').onclick = () => download(`標注_${user}_${stamp()}.json`, JSON.stringify({
+  annotator: user, exported_at: new Date().toISOString(), labels,
+  docs: docs.map(d => ({id: d.id, ...docAnn(d.id)})),
+}, null, 2), 'application/json');
+
+// ---- login ----
+// shortcut: demo-only gate, credentials live in client JS so anyone can read them; use a real auth backend before real use.
+function showLogin(){ $('#login').hidden = false; $('#loginId').focus() }
+$('#loginForm').onsubmit = e => {
+  e.preventDefault();
+  if ($('#loginId').value !== 'admin' || $('#loginPw').value !== 'admin') return $('#loginErr').textContent = '帳號或密碼錯誤';
+  Store.set('auth', true); $('#login').hidden = true; $('#loginForm').reset(); $('#loginErr').textContent = '';
+  if (!user) askUser();
+};
+$('#logout').onclick = () => { Store.set('auth', false); setUser(''); showLogin() };
+
+render();
+if (!Store.get('auth', false)) showLogin();
+else if (!user) askUser();
+</script>
+</body>
+</html>
