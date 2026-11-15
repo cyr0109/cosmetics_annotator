@@ -1,0 +1,8 @@
+.DS_Store
+.claude/
+
+# 研究資料與匯出的標注結果，不要進版控
+*.xlsx
+*.xls
+*.csv
+*.json
